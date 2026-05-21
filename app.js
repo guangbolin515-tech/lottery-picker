@@ -1,0 +1,666 @@
+const LOTTERIES = {
+  ssq: {
+    name: "双色球",
+    short: "双色球",
+    supportsCompound: true,
+    basePrice: 2,
+    areas: [
+      { key: "red", label: "红球", min: 1, max: 33, pick: 6, color: "red", ordered: false },
+      { key: "blue", label: "蓝球", min: 1, max: 16, pick: 1, color: "blue", ordered: false }
+    ]
+  },
+  dlt: {
+    name: "大乐透",
+    short: "大乐透",
+    supportsCompound: true,
+    supportsAddOn: true,
+    basePrice: 2,
+    addOnPrice: 3,
+    areas: [
+      { key: "front", label: "前区", min: 1, max: 35, pick: 5, color: "red", ordered: false },
+      { key: "back", label: "后区", min: 1, max: 12, pick: 2, color: "blue", ordered: false }
+    ]
+  },
+  sd: {
+    name: "3D",
+    short: "3D",
+    supportsPositionCompound: true,
+    basePrice: 2,
+    digits: ["百位", "十位", "个位"]
+  },
+  p3: {
+    name: "排列3",
+    short: "排列3",
+    supportsPositionCompound: true,
+    basePrice: 2,
+    digits: ["百位", "十位", "个位"]
+  },
+  p5: {
+    name: "排列5",
+    short: "排列5",
+    basePrice: 2,
+    digits: ["万位", "千位", "百位", "十位", "个位"]
+  }
+};
+
+const app = document.querySelector("#app");
+const state = {
+  lottery: "ssq",
+  mode: "random",
+  play: "single",
+  count: 5,
+  multiple: 1,
+  addOn: false,
+  selections: {},
+  positionSelections: {},
+  randomSizes: {},
+  results: [],
+  toast: ""
+};
+
+function initSelections() {
+  Object.values(LOTTERIES).forEach((lottery) => {
+    if (lottery.areas) {
+      state.selections[lottery.short] = Object.fromEntries(lottery.areas.map((area) => [area.key, []]));
+      lottery.areas.forEach((area) => {
+        state.randomSizes[`${lottery.short}-${area.key}`] = area.pick + (area.pick === 1 ? 0 : 1);
+      });
+    }
+    if (lottery.digits) {
+      state.positionSelections[lottery.short] = Object.fromEntries(lottery.digits.map((digit) => [digit, []]));
+      lottery.digits.forEach((digit) => {
+        state.randomSizes[`${lottery.short}-${digit}`] = 1;
+      });
+    }
+  });
+  state.randomSizes["3D-百位"] = 3;
+  state.randomSizes["3D-十位"] = 3;
+  state.randomSizes["3D-个位"] = 3;
+  state.randomSizes["排列3-百位"] = 3;
+  state.randomSizes["排列3-十位"] = 3;
+  state.randomSizes["排列3-个位"] = 3;
+}
+
+function pad(value) {
+  return String(value).padStart(2, "0");
+}
+
+function range(min, max) {
+  return Array.from({ length: max - min + 1 }, (_, index) => min + index);
+}
+
+function sample(min, max, size, sorted = true) {
+  const values = range(min, max);
+  for (let i = values.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [values[i], values[j]] = [values[j], values[i]];
+  }
+  const picked = values.slice(0, size);
+  return sorted ? picked.sort((a, b) => a - b) : picked;
+}
+
+function combination(n, k) {
+  if (n < k) return 0;
+  let result = 1;
+  for (let i = 1; i <= k; i += 1) {
+    result = (result * (n - k + i)) / i;
+  }
+  return Math.round(result);
+}
+
+function currentLottery() {
+  return LOTTERIES[state.lottery];
+}
+
+function availablePlays(lottery) {
+  const plays = [{ key: "single", label: "单式" }];
+  if (lottery.supportsCompound) plays.push({ key: "compound", label: "复式" });
+  if (lottery.supportsPositionCompound) plays.push({ key: "position", label: "定位复式" });
+  return plays;
+}
+
+function setLottery(key) {
+  state.lottery = key;
+  state.count = 5;
+  state.multiple = 1;
+  const plays = availablePlays(currentLottery()).map((item) => item.key);
+  state.play = plays.includes(state.play) ? state.play : "single";
+  state.results = [];
+  render();
+}
+
+function setPlay(key) {
+  state.play = key;
+  state.count = Math.min(state.count, countLimit());
+  state.results = [];
+  render();
+}
+
+function setMode(key) {
+  state.mode = key;
+  state.results = [];
+  render();
+}
+
+function clampInput(value, min, max) {
+  const numeric = Number(value || min);
+  return Math.max(min, Math.min(max, Math.floor(numeric)));
+}
+
+function countLimit() {
+  return state.play === "compound" ? 25 : 50;
+}
+
+function toggleArea(areaKey, number) {
+  const lottery = currentLottery();
+  const bucket = state.selections[lottery.short][areaKey];
+  const exists = bucket.includes(number);
+  const area = lottery.areas.find((item) => item.key === areaKey);
+  const maxPick = state.play === "single" ? area.pick : area.max;
+  if (exists) {
+    state.selections[lottery.short][areaKey] = bucket.filter((item) => item !== number);
+  } else if (bucket.length < maxPick) {
+    state.selections[lottery.short][areaKey] = [...bucket, number].sort((a, b) => a - b);
+  }
+  render();
+}
+
+function toggleDigit(digit, number) {
+  const lottery = currentLottery();
+  const bucket = state.positionSelections[lottery.short][digit];
+  const exists = bucket.includes(number);
+  const maxPick = state.play === "position" ? 3 : 1;
+  if (exists) {
+    state.positionSelections[lottery.short][digit] = bucket.filter((item) => item !== number);
+  } else if (bucket.length < maxPick) {
+    state.positionSelections[lottery.short][digit] = [...bucket, number].sort((a, b) => a - b);
+  }
+  render();
+}
+
+function getUnitPrice(lottery) {
+  return lottery.supportsAddOn && state.addOn ? lottery.addOnPrice : lottery.basePrice;
+}
+
+function calcBetCount(result) {
+  const lottery = currentLottery();
+  if (!result) return 0;
+  if (result.type === "single") return result.tickets.length;
+  if (result.type === "compound") {
+    const groups = result.groups || [result.areas];
+    return groups.reduce(
+      (sum, group) =>
+        sum + lottery.areas.reduce((total, area) => total * combination(group[area.key].length, area.pick), 1),
+      0
+    );
+  }
+  if (result.type === "position") {
+    return lottery.digits.reduce((total, digit) => total * result.positions[digit].length, 1);
+  }
+  return 0;
+}
+
+function calcCost(result) {
+  return calcBetCount(result) * getUnitPrice(currentLottery()) * state.multiple;
+}
+
+function makeSingleTicket() {
+  const lottery = currentLottery();
+  if (lottery.areas) {
+    return {
+      kind: "areas",
+      areas: Object.fromEntries(
+        lottery.areas.map((area) => [area.key, sample(area.min, area.max, area.pick, !area.ordered)])
+      )
+    };
+  }
+  return {
+    kind: "digits",
+    digits: Object.fromEntries(lottery.digits.map((digit) => [digit, sample(0, 9, 1, false)[0]]))
+  };
+}
+
+function makeCompoundAreas(lottery) {
+  return Object.fromEntries(
+    lottery.areas.map((area) => {
+      const requested = clampInput(state.randomSizes[`${lottery.short}-${area.key}`], area.pick, area.max);
+      return [area.key, sample(area.min, area.max, requested, true)];
+    })
+  );
+}
+
+function generateRandom() {
+  const lottery = currentLottery();
+  if (state.play === "single") {
+    state.results = [
+      {
+        type: "single",
+        tickets: Array.from({ length: state.count }, () => makeSingleTicket())
+      }
+    ];
+  } else if (state.play === "compound") {
+    state.count = clampInput(state.count, 1, 25);
+    state.results = [
+      {
+        type: "compound",
+        groups: Array.from({ length: state.count }, () => makeCompoundAreas(lottery))
+      }
+    ];
+  } else {
+    const positions = Object.fromEntries(
+      lottery.digits.map((digit) => {
+        const requested = clampInput(state.randomSizes[`${lottery.short}-${digit}`], 1, 3);
+        return [digit, sample(0, 9, requested, true)];
+      })
+    );
+    state.results = [{ type: "position", positions }];
+  }
+  render();
+}
+
+function addManual() {
+  const lottery = currentLottery();
+  if (state.play === "single") {
+    if (lottery.areas) {
+      const ready = lottery.areas.every((area) => state.selections[lottery.short][area.key].length === area.pick);
+      if (!ready) return showToast("请按规则选满一注号码");
+      const ticket = {
+        kind: "areas",
+        areas: Object.fromEntries(lottery.areas.map((area) => [area.key, [...state.selections[lottery.short][area.key]]]))
+      };
+      appendSingle(ticket);
+    } else {
+      const ready = lottery.digits.every((digit) => state.positionSelections[lottery.short][digit].length === 1);
+      if (!ready) return showToast("请每一位选择 1 个号码");
+      const ticket = {
+        kind: "digits",
+        digits: Object.fromEntries(lottery.digits.map((digit) => [digit, state.positionSelections[lottery.short][digit][0]]))
+      };
+      appendSingle(ticket);
+    }
+  } else if (state.play === "compound") {
+    const ready = lottery.areas.every((area) => state.selections[lottery.short][area.key].length >= area.pick);
+    if (!ready) return showToast("复式号码还未达到最低选择数量");
+    state.results = [
+      {
+        type: "compound",
+        groups: [
+          Object.fromEntries(lottery.areas.map((area) => [area.key, [...state.selections[lottery.short][area.key]]]))
+        ]
+      }
+    ];
+  } else {
+    const ready = lottery.digits.every((digit) => state.positionSelections[lottery.short][digit].length >= 1);
+    if (!ready) return showToast("定位复式每一位至少选择 1 个号码");
+    state.results = [
+      {
+        type: "position",
+        positions: Object.fromEntries(lottery.digits.map((digit) => [digit, [...state.positionSelections[lottery.short][digit]]]))
+      }
+    ];
+  }
+  render();
+}
+
+function appendSingle(ticket) {
+  const current = state.results[0]?.type === "single" ? state.results[0].tickets : [];
+  if (current.length >= 50) return showToast("自选最多保留 50 注");
+  state.results = [{ type: "single", tickets: [...current, ticket] }];
+}
+
+function clearCurrentSelection() {
+  const lottery = currentLottery();
+  if (lottery.areas) {
+    lottery.areas.forEach((area) => {
+      state.selections[lottery.short][area.key] = [];
+    });
+  }
+  if (lottery.digits) {
+    lottery.digits.forEach((digit) => {
+      state.positionSelections[lottery.short][digit] = [];
+    });
+  }
+  state.results = [];
+  render();
+}
+
+function showToast(message) {
+  state.toast = message;
+  render();
+  window.clearTimeout(showToast.timer);
+  showToast.timer = window.setTimeout(() => {
+    state.toast = "";
+    render();
+  }, 1800);
+}
+
+function formatTicket(ticket) {
+  const lottery = currentLottery();
+  if (ticket.kind === "areas") {
+    return lottery.areas
+      .map((area) => `${area.label} ${ticket.areas[area.key].map(pad).join(" ")}`)
+      .join(" + ");
+  }
+  return lottery.digits.map((digit) => `${digit}${ticket.digits[digit]}`).join(" ");
+}
+
+function formatResult(result) {
+  const lottery = currentLottery();
+  if (!result) return "";
+  const common = [
+    `彩种：${lottery.name}`,
+    lottery.supportsAddOn ? `追加：${state.addOn ? "是" : "否"}` : ""
+  ].filter(Boolean);
+
+  if (result.type === "single") {
+    return [
+      ...common,
+      "",
+      ...result.tickets.map((ticket, index) => `第${index + 1}注：${formatTicket(ticket)}`)
+    ].join("\n");
+  }
+  if (result.type === "compound") {
+    const groups = result.groups || [result.areas];
+    const lines = groups.flatMap((group, index) => [
+      groups.length > 1 ? `第${index + 1}注：` : "",
+      ...lottery.areas.map((area) => `${area.label}：${group[area.key].map(pad).join(" ")}`),
+      ""
+    ]);
+    return [...common, "", ...lines].join("\n").trimEnd();
+  }
+  return [
+    ...common,
+    "",
+    ...lottery.digits.map((digit) => `${digit}：${result.positions[digit].join(" ")}`)
+  ].join("\n");
+}
+
+async function copyResult() {
+  if (!state.results[0]) return showToast("请先生成或添加号码");
+  const text = formatResult(state.results[0]);
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast("已复制选号信息");
+  } catch {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    document.body.append(textarea);
+    textarea.select();
+    document.execCommand("copy");
+    textarea.remove();
+    showToast("已复制选号信息");
+  }
+}
+
+function playLabel() {
+  if (state.play === "compound") return "复式";
+  if (state.play === "position") return "定位复式";
+  return "单式";
+}
+
+function renderTabs() {
+  return `
+    <div class="lottery-tabs" role="tablist">
+      ${Object.entries(LOTTERIES)
+        .map(([key, lottery]) => `
+          <button class="tab ${state.lottery === key ? "active" : ""}" data-action="lottery" data-key="${key}" type="button">
+            ${lottery.short}
+          </button>
+        `)
+        .join("")}
+    </div>
+  `;
+}
+
+function renderSegment(name, items, selected) {
+  return `
+    <div class="segment">
+      ${items
+        .map((item) => `
+          <button class="${selected === item.key ? "active" : ""}" data-action="${name}" data-key="${item.key}" type="button">
+            ${item.label}
+          </button>
+        `)
+        .join("")}
+    </div>
+  `;
+}
+
+function renderNumberInput(label, value, min, max, action, suffix = "") {
+  return `
+    <label class="field">
+      <span>${label}</span>
+      <input data-action="${action}" min="${min}" max="${max}" inputmode="numeric" type="number" value="${value}" />
+      <em>${suffix}</em>
+    </label>
+  `;
+}
+
+function renderSettings() {
+  const lottery = currentLottery();
+  return `
+    <section class="panel settings">
+      <div class="panel-title">选号设置</div>
+      ${renderSegment("mode", [
+        { key: "random", label: "随机选号" },
+        { key: "manual", label: "自选号码" }
+      ], state.mode)}
+      ${renderSegment("play", availablePlays(lottery), state.play)}
+      <div class="fields">
+        ${
+          (state.play === "single" || state.play === "compound") && state.mode === "random"
+            ? renderNumberInput("注数", Math.min(state.count, countLimit()), 1, countLimit(), "count", "注")
+            : ""
+        }
+        ${renderNumberInput("倍投", state.multiple, 1, 999, "multiple", "倍")}
+      </div>
+      ${
+        lottery.supportsAddOn
+          ? `<button class="switch" data-action="toggleAddon" type="button" aria-pressed="${state.addOn}">
+              <span></span><b>大乐透追加</b><small>${state.addOn ? "3元/注" : "2元/注"}</small>
+            </button>`
+          : ""
+      }
+    </section>
+  `;
+}
+
+function renderRandomPanel() {
+  const lottery = currentLottery();
+  if (state.play === "single") {
+    return `
+      <section class="panel">
+        <div class="panel-title">随机生成</div>
+        <p class="hint">按当前彩种规则生成 ${state.count} 注单式号码。</p>
+        <button class="primary" data-action="generate" type="button">生成号码</button>
+      </section>
+    `;
+  }
+  if (state.play === "compound") {
+    return `
+      <section class="panel">
+        <div class="panel-title">随机复式</div>
+        <p class="hint">按当前复式设置生成 ${Math.min(state.count, 25)} 注，每注单独计算组合数。</p>
+        <div class="fields">
+          ${lottery.areas
+            .map((area) => renderNumberInput(`${area.label}个数`, state.randomSizes[`${lottery.short}-${area.key}`], area.pick, area.max, `size:${area.key}`, "个"))
+            .join("")}
+        </div>
+        <button class="primary" data-action="generate" type="button">生成复式</button>
+      </section>
+    `;
+  }
+  return `
+    <section class="panel">
+      <div class="panel-title">随机定位复式</div>
+      <div class="fields position-fields">
+        ${lottery.digits
+          .map((digit) => renderNumberInput(`${digit}个数`, state.randomSizes[`${lottery.short}-${digit}`], 1, 3, `digitSize:${digit}`, "个"))
+          .join("")}
+      </div>
+      <p class="hint">每位最多 3 个号码，最大组合为 3 x 3 x 3。</p>
+      <button class="primary" data-action="generate" type="button">生成定位复式</button>
+    </section>
+  `;
+}
+
+function renderAreaPicker() {
+  const lottery = currentLottery();
+  if (lottery.areas) {
+    return lottery.areas
+      .map((area) => {
+        const selected = state.selections[lottery.short][area.key];
+        const target = state.play === "single" ? `选 ${area.pick} 个` : `至少 ${area.pick} 个`;
+        return `
+          <div class="picker-group">
+            <div class="picker-head">
+              <strong>${area.label}</strong>
+              <span>${selected.length}/${target}</span>
+            </div>
+            <div class="balls">
+              ${range(area.min, area.max)
+                .map((number) => `
+                  <button class="ball ${area.color} ${selected.includes(number) ? "selected" : ""}" data-action="area" data-area="${area.key}" data-number="${number}" type="button">
+                    ${pad(number)}
+                  </button>
+                `)
+                .join("")}
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+  }
+  return lottery.digits
+    .map((digit) => {
+      const selected = state.positionSelections[lottery.short][digit];
+      const target = state.play === "position" ? "1-3 个" : "1 个";
+      return `
+        <div class="picker-group">
+          <div class="picker-head">
+            <strong>${digit}</strong>
+            <span>${selected.length}/${target}</span>
+          </div>
+          <div class="balls digit-balls">
+            ${range(0, 9)
+              .map((number) => `
+                <button class="ball digit ${selected.includes(number) ? "selected" : ""}" data-action="digit" data-digit="${digit}" data-number="${number}" type="button">
+                  ${number}
+                </button>
+              `)
+              .join("")}
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderManualPanel() {
+  return `
+    <section class="panel">
+      <div class="panel-title">${state.play === "single" ? "自选号码" : playLabel()}</div>
+      ${renderAreaPicker()}
+      <div class="action-row">
+        <button class="secondary" data-action="clear" type="button">清空</button>
+        <button class="primary" data-action="addManual" type="button">${state.play === "single" ? "确认加入" : "生成结果"}</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderResult() {
+  const result = state.results[0];
+  const lottery = currentLottery();
+  if (!result) {
+    return `
+      <section class="result empty">
+        <div class="result-top">
+          <strong>选号结果</strong>
+          <span>待生成</span>
+        </div>
+        <p>生成或自选号码后，这里会显示注数、倍投和自动结算金额。</p>
+      </section>
+    `;
+  }
+  return `
+    <section class="result">
+      <div class="result-top">
+        <strong>${lottery.name} · ${playLabel()}</strong>
+        <button data-action="copy" type="button">复制</button>
+      </div>
+      <div class="summary">
+        <div><span>计费注数</span><b>${calcBetCount(result)}注</b></div>
+        <div><span>倍投</span><b>${state.multiple}倍</b></div>
+        <div><span>单注</span><b>${getUnitPrice(lottery)}元</b></div>
+        <div><span>金额</span><b>${calcCost(result)}元</b></div>
+      </div>
+      <pre>${formatResult(result)}</pre>
+    </section>
+  `;
+}
+
+function render() {
+  app.innerHTML = `
+    <main class="shell">
+      <header class="hero">
+        <div>
+          <h1>彩票模拟选号器</h1>
+          <p>仅作模拟选号与金额计算</p>
+        </div>
+        <span class="badge">PWA</span>
+      </header>
+      ${renderTabs()}
+      ${renderSettings()}
+      ${state.mode === "random" ? renderRandomPanel() : renderManualPanel()}
+      ${renderResult()}
+    </main>
+    ${state.toast ? `<div class="toast">${state.toast}</div>` : ""}
+  `;
+}
+
+app.addEventListener("click", (event) => {
+  const target = event.target.closest("[data-action]");
+  if (!target) return;
+  const action = target.dataset.action;
+  if (action === "lottery") setLottery(target.dataset.key);
+  if (action === "mode") setMode(target.dataset.key);
+  if (action === "play") setPlay(target.dataset.key);
+  if (action === "generate") generateRandom();
+  if (action === "addManual") addManual();
+  if (action === "clear") clearCurrentSelection();
+  if (action === "copy") copyResult();
+  if (action === "area") toggleArea(target.dataset.area, Number(target.dataset.number));
+  if (action === "digit") toggleDigit(target.dataset.digit, Number(target.dataset.number));
+  if (action === "toggleAddon") {
+    state.addOn = !state.addOn;
+    render();
+  }
+});
+
+app.addEventListener("input", (event) => {
+  const target = event.target;
+  const action = target.dataset.action;
+  if (!action) return;
+  const lottery = currentLottery();
+  if (action === "count") state.count = clampInput(target.value, 1, countLimit());
+  if (action === "multiple") state.multiple = clampInput(target.value, 1, 999);
+  if (action.startsWith("size:")) {
+    const area = lottery.areas.find((item) => item.key === action.slice(5));
+    state.randomSizes[`${lottery.short}-${area.key}`] = clampInput(target.value, area.pick, area.max);
+  }
+  if (action.startsWith("digitSize:")) {
+    const digit = action.slice(10);
+    state.randomSizes[`${lottery.short}-${digit}`] = clampInput(target.value, 1, 3);
+  }
+  render();
+});
+
+initSelections();
+render();
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  });
+}

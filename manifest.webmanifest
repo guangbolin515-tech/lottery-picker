@@ -1,0 +1,18 @@
+{
+  "name": "彩票模拟选号器",
+  "short_name": "模拟选号器",
+  "description": "双色球、大乐透、3D、排列3、排列5手机模拟选号工具",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f8f6f2",
+  "theme_color": "#d72232",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
