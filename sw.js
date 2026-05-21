@@ -1,4 +1,4 @@
-const CACHE_NAME = "lottery-picker-v2";
+const CACHE_NAME = "lottery-picker-v3";
 const ASSETS = [
   "./",
   "./index.html",

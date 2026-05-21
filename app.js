@@ -48,7 +48,7 @@ const state = {
   lottery: "ssq",
   mode: "random",
   play: "single",
-  count: 5,
+  count: 1,
   multiple: 1,
   addOn: false,
   selections: {},
@@ -64,7 +64,13 @@ function initSelections() {
     if (lottery.areas) {
       state.selections[lottery.short] = Object.fromEntries(lottery.areas.map((area) => [area.key, []]));
       lottery.areas.forEach((area) => {
-        state.randomSizes[`${lottery.short}-${area.key}`] = area.pick + (area.pick === 1 ? 0 : 1);
+        const defaultSize =
+          lottery.short === "双色球" && area.key === "red"
+            ? 7
+            : lottery.short === "大乐透" && area.key === "front"
+              ? 6
+              : area.pick;
+        state.randomSizes[`${lottery.short}-${area.key}`] = defaultSize;
       });
     }
     if (lottery.digits) {
@@ -74,12 +80,12 @@ function initSelections() {
       });
     }
   });
-  state.randomSizes["3D-百位"] = 3;
-  state.randomSizes["3D-十位"] = 3;
-  state.randomSizes["3D-个位"] = 3;
-  state.randomSizes["排列3-百位"] = 3;
-  state.randomSizes["排列3-十位"] = 3;
-  state.randomSizes["排列3-个位"] = 3;
+  state.randomSizes["3D-百位"] = 2;
+  state.randomSizes["3D-十位"] = 2;
+  state.randomSizes["3D-个位"] = 2;
+  state.randomSizes["排列3-百位"] = 2;
+  state.randomSizes["排列3-十位"] = 2;
+  state.randomSizes["排列3-个位"] = 2;
 }
 
 function pad(value) {
@@ -122,7 +128,7 @@ function availablePlays(lottery) {
 
 function setLottery(key) {
   state.lottery = key;
-  state.count = 5;
+  state.count = 1;
   state.multiple = 1;
   const plays = availablePlays(currentLottery()).map((item) => item.key);
   state.play = plays.includes(state.play) ? state.play : "single";
@@ -380,7 +386,7 @@ function formatTicket(ticket) {
       .map((area) => `${area.label} ${ticket.areas[area.key].map(pad).join(" ")}`)
       .join(" + ");
   }
-  return lottery.digits.map((digit) => `${digit}${ticket.digits[digit]}`).join(" ");
+  return lottery.digits.map((digit) => ticket.digits[digit]).join(",");
 }
 
 function formatResult(result) {
@@ -654,6 +660,10 @@ function render() {
       ${renderSettings()}
       ${state.mode === "random" ? renderRandomPanel() : renderManualPanel()}
       ${renderResult()}
+      <footer class="site-footer">
+        <strong>作者：林广波</strong>
+        <span>彩票有风险，参与需理性，量力而行。</span>
+      </footer>
     </main>
     ${state.toast ? `<div class="toast">${state.toast}</div>` : ""}
   `;

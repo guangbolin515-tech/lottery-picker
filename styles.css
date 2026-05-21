@@ -405,6 +405,21 @@ button {
   font-size: 14px;
 }
 
+.site-footer {
+  display: grid;
+  gap: 6px;
+  padding: 10px 6px 4px;
+  color: var(--muted);
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.site-footer strong {
+  color: #4c433d;
+  font-size: 14px;
+}
+
 .toast {
   position: fixed;
   left: 50%;
