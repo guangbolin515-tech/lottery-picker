@@ -54,6 +54,7 @@ const state = {
   selections: {},
   positionSelections: {},
   randomSizes: {},
+  inputDrafts: {},
   results: [],
   toast: ""
 };
@@ -147,6 +148,43 @@ function clampInput(value, min, max) {
   return Math.max(min, Math.min(max, Math.floor(numeric)));
 }
 
+function normalizeNumberInput(action, value) {
+  const lottery = currentLottery();
+  if (action === "count") return clampInput(value, 1, countLimit());
+  if (action === "multiple") return clampInput(value, 1, 999);
+  if (action.startsWith("size:")) {
+    const area = lottery.areas.find((item) => item.key === action.slice(5));
+    return clampInput(value, area.pick, area.max);
+  }
+  if (action.startsWith("digitSize:")) return clampInput(value, 1, 3);
+  return clampInput(value, 1, 999);
+}
+
+function setNumericState(action, value) {
+  const lottery = currentLottery();
+  if (action === "count") state.count = value;
+  if (action === "multiple") state.multiple = value;
+  if (action.startsWith("size:")) {
+    const area = lottery.areas.find((item) => item.key === action.slice(5));
+    state.randomSizes[`${lottery.short}-${area.key}`] = value;
+  }
+  if (action.startsWith("digitSize:")) {
+    const digit = action.slice(10);
+    state.randomSizes[`${lottery.short}-${digit}`] = value;
+  }
+}
+
+function commitInput(action) {
+  if (!action || !(action in state.inputDrafts)) return;
+  const value = normalizeNumberInput(action, state.inputDrafts[action]);
+  setNumericState(action, value);
+  delete state.inputDrafts[action];
+}
+
+function commitAllInputs() {
+  Object.keys(state.inputDrafts).forEach(commitInput);
+}
+
 function countLimit() {
   return state.play === "compound" ? 25 : 50;
 }
@@ -230,6 +268,7 @@ function makeCompoundAreas(lottery) {
 }
 
 function generateRandom() {
+  commitAllInputs();
   const lottery = currentLottery();
   if (state.play === "single") {
     state.results = [
@@ -427,10 +466,11 @@ function renderSegment(name, items, selected) {
 }
 
 function renderNumberInput(label, value, min, max, action, suffix = "") {
+  const displayValue = action in state.inputDrafts ? state.inputDrafts[action] : value;
   return `
     <label class="field">
       <span>${label}</span>
-      <input data-action="${action}" min="${min}" max="${max}" inputmode="numeric" type="number" value="${value}" />
+      <input data-action="${action}" min="${min}" max="${max}" inputmode="numeric" pattern="[0-9]*" type="text" value="${displayValue}" />
       <em>${suffix}</em>
     </label>
   `;
@@ -642,18 +682,24 @@ app.addEventListener("input", (event) => {
   const target = event.target;
   const action = target.dataset.action;
   if (!action) return;
-  const lottery = currentLottery();
-  if (action === "count") state.count = clampInput(target.value, 1, countLimit());
-  if (action === "multiple") state.multiple = clampInput(target.value, 1, 999);
-  if (action.startsWith("size:")) {
-    const area = lottery.areas.find((item) => item.key === action.slice(5));
-    state.randomSizes[`${lottery.short}-${area.key}`] = clampInput(target.value, area.pick, area.max);
-  }
-  if (action.startsWith("digitSize:")) {
-    const digit = action.slice(10);
-    state.randomSizes[`${lottery.short}-${digit}`] = clampInput(target.value, 1, 3);
-  }
+  state.inputDrafts[action] = target.value.replace(/\D/g, "");
+  target.value = state.inputDrafts[action];
+});
+
+app.addEventListener("blur", (event) => {
+  const target = event.target;
+  const action = target.dataset.action;
+  if (!action) return;
+  commitInput(action);
   render();
+}, true);
+
+app.addEventListener("keydown", (event) => {
+  const target = event.target;
+  const action = target.dataset.action;
+  if (!action || event.key !== "Enter") return;
+  commitInput(action);
+  target.blur();
 });
 
 initSelections();
