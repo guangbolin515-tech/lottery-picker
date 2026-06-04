@@ -94,6 +94,7 @@ const DRAW_INFO = {
 };
 
 const DRAW_STORAGE_KEY = "lottery-draw-history-v1";
+const DRAW_META_STORAGE_KEY = "lottery-draw-meta-v1";
 const DRAW_DATA_FILES = {
   ssq: "data/ssq.json",
   dlt: "data/dlt.json",
@@ -115,6 +116,7 @@ const state = {
   randomSizes: {},
   inputDrafts: {},
   drawHistory: loadDrawHistory(),
+  drawMeta: loadDrawMeta(),
   drawLoading: false,
   drawError: "",
   showDrawHistory: false,
@@ -134,10 +136,29 @@ function saveDrawHistory() {
   localStorage.setItem(DRAW_STORAGE_KEY, JSON.stringify(state.drawHistory));
 }
 
-function applyDrawHistory(lotteryKey, draws) {
+function loadDrawMeta() {
+  try {
+    return JSON.parse(localStorage.getItem(DRAW_META_STORAGE_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function saveDrawMeta() {
+  localStorage.setItem(DRAW_META_STORAGE_KEY, JSON.stringify(state.drawMeta));
+}
+
+function applyDrawData(lotteryKey, data) {
+  const draws = data.draws || data;
   if (!Array.isArray(draws) || !draws.length) return false;
   state.drawHistory[lotteryKey] = draws.slice(0, 30);
+  state.drawMeta[lotteryKey] = {
+    updatedAt: data.updatedAt || new Date().toISOString(),
+    checkedAt: data.checkedAt || "",
+    lastError: data.lastError || ""
+  };
   saveDrawHistory();
+  saveDrawMeta();
   return true;
 }
 
@@ -519,6 +540,27 @@ function formatDrawNumbers(draw) {
   return draw.front.join(",");
 }
 
+function formatDateTime(value) {
+  if (!value) return "暂无更新时间";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "暂无更新时间";
+  return date.toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  });
+}
+
+function isDrawDataStale(meta) {
+  if (!meta?.updatedAt) return false;
+  const updatedAt = new Date(meta.updatedAt).getTime();
+  if (Number.isNaN(updatedAt)) return false;
+  return Date.now() - updatedAt > 36 * 60 * 60 * 1000;
+}
+
 function normalizeNumberList(value) {
   if (Array.isArray(value)) return value.map(String);
   return String(value || "")
@@ -591,7 +633,7 @@ async function refreshDrawResults() {
     const response = await fetch(`${DRAW_DATA_FILES[lotteryKey]}?t=${Date.now()}`, { cache: "no-store" });
     if (!response.ok) throw new Error("not-found");
     const data = await response.json();
-    if (!applyDrawHistory(lotteryKey, data.draws || data)) throw new Error("empty");
+    if (!applyDrawData(lotteryKey, data)) throw new Error("empty");
     showToast("开奖数据已更新");
   } catch {
     state.drawError = "暂时没有可用开奖数据，请稍后重试或打开官方查询。";
@@ -607,7 +649,7 @@ async function loadDrawForLottery(lotteryKey) {
     const response = await fetch(`${DRAW_DATA_FILES[lotteryKey]}?t=${Date.now()}`, { cache: "no-store" });
     if (!response.ok) return;
     const data = await response.json();
-    if (applyDrawHistory(lotteryKey, data.draws || data)) render();
+    if (applyDrawData(lotteryKey, data)) render();
   } catch {
     // Static draw data is optional; keep the picker usable when it is unavailable.
   }
@@ -697,7 +739,9 @@ function renderDrawPanel() {
   const info = DRAW_INFO[state.lottery];
   const lottery = currentLottery();
   const history = state.drawHistory[state.lottery] || [];
+  const meta = state.drawMeta[state.lottery] || {};
   const latest = history[0];
+  const stale = isDrawDataStale(meta);
   return `
     <section class="panel draw-panel">
       <div class="panel-title">开奖结果</div>
@@ -713,6 +757,8 @@ function renderDrawPanel() {
         <strong>${formatDrawNumbers(latest)}</strong>
       </div>
       <p class="hint">${info.note} 本地最多保存近 30 期。</p>
+      <p class="draw-update-time">最后更新时间：${formatDateTime(meta.updatedAt)}</p>
+      ${stale ? `<p class="draw-warning">开奖数据超过 36 小时未更新，可能不是最新。</p>` : ""}
       ${state.drawError ? `<p class="draw-error">${state.drawError}</p>` : ""}
       <div class="draw-actions">
         <button data-action="refreshDraw" type="button">${state.drawLoading ? "更新中..." : "更新开奖"}</button>

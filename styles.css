@@ -405,6 +405,21 @@ button {
   line-height: 1.45;
 }
 
+.draw-update-time,
+.draw-warning {
+  margin: -4px 0 10px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.draw-update-time {
+  color: var(--muted);
+}
+
+.draw-warning {
+  color: var(--red);
+}
+
 .primary,
 .secondary {
   min-height: 46px;
