@@ -675,6 +675,23 @@ button {
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
 }
 
+.update-banner {
+  position: fixed;
+  left: 50%;
+  bottom: calc(18px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 6;
+  width: min(360px, calc(100vw - 28px));
+  min-height: 44px;
+  border: 0;
+  border-radius: 8px;
+  background: #1f2937;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 900;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22);
+}
+
 @media (max-width: 380px) {
   .shell {
     padding-left: 10px;

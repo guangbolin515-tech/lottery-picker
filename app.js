@@ -121,6 +121,7 @@ const state = {
   drawError: "",
   showDrawHistory: false,
   showDisclaimer: false,
+  updateAvailable: false,
   results: [],
   toast: ""
 };
@@ -986,6 +987,7 @@ function render() {
           </div>`
         : ""
     }
+    ${state.updateAvailable ? `<button class="update-banner" data-action="reloadApp" type="button">发现新版本，点击刷新</button>` : ""}
     ${state.toast ? `<div class="toast">${state.toast}</div>` : ""}
   `;
 }
@@ -1016,6 +1018,9 @@ app.addEventListener("click", (event) => {
   if (action === "closeDisclaimer") {
     state.showDisclaimer = false;
     render();
+  }
+  if (action === "reloadApp") {
+    window.location.reload();
   }
   if (action === "toggleAddon") {
     state.addOn = !state.addOn;
@@ -1053,6 +1058,17 @@ loadDrawForLottery(state.lottery);
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
+    navigator.serviceWorker.register("./sw.js").then((registration) => {
+      registration.addEventListener("updatefound", () => {
+        const worker = registration.installing;
+        if (!worker) return;
+        worker.addEventListener("statechange", () => {
+          if (worker.state === "installed" && navigator.serviceWorker.controller) {
+            state.updateAvailable = true;
+            render();
+          }
+        });
+      });
+    }).catch(() => {});
   });
 }
