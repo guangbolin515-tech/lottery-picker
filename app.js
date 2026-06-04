@@ -117,6 +117,7 @@ const state = {
   drawHistory: loadDrawHistory(),
   drawLoading: false,
   drawError: "",
+  showDrawHistory: false,
   results: [],
   toast: ""
 };
@@ -211,6 +212,7 @@ function setLottery(key) {
   state.lottery = key;
   state.count = 1;
   state.multiple = 1;
+  state.showDrawHistory = false;
   const plays = availablePlays(currentLottery()).map((item) => item.key);
   state.play = plays.includes(state.play) ? state.play : "single";
   state.results = [];
@@ -714,8 +716,27 @@ function renderDrawPanel() {
       ${state.drawError ? `<p class="draw-error">${state.drawError}</p>` : ""}
       <div class="draw-actions">
         <button data-action="refreshDraw" type="button">${state.drawLoading ? "更新中..." : "更新开奖"}</button>
-        <a href="${info.resultUrl}" target="_blank" rel="noopener">开奖查询</a>
+        <button data-action="toggleDrawHistory" type="button">${state.showDrawHistory ? "收起历史" : "历史开奖"}</button>
       </div>
+      ${
+        state.showDrawHistory
+          ? `<div class="draw-history">
+              ${
+                history.length
+                  ? history
+                      .slice(0, 30)
+                      .map((draw) => `
+                        <div class="draw-history-row">
+                          <span>第${draw.issue}期</span>
+                          <strong>${formatDrawNumbers(draw)}</strong>
+                        </div>
+                      `)
+                      .join("")
+                  : `<p>暂无历史开奖数据</p>`
+              }
+            </div>`
+          : ""
+      }
     </section>
   `;
 }
@@ -923,6 +944,10 @@ app.addEventListener("click", (event) => {
   if (action === "digit") toggleDigit(target.dataset.digit, Number(target.dataset.number));
   if (action === "stepInput") stepNumberInput(target.dataset.target, Number(target.dataset.delta));
   if (action === "refreshDraw") refreshDrawResults();
+  if (action === "toggleDrawHistory") {
+    state.showDrawHistory = !state.showDrawHistory;
+    render();
+  }
   if (action === "toggleAddon") {
     state.addOn = !state.addOn;
     render();

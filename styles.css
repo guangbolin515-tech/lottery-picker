@@ -311,7 +311,8 @@ button {
   gap: 10px;
 }
 
-.draw-actions a {
+.draw-actions a,
+.draw-actions button {
   min-height: 42px;
   display: inline-flex;
   align-items: center;
@@ -322,16 +323,54 @@ button {
   color: #fff;
   text-decoration: none;
   font-weight: 900;
+  cursor: pointer;
 }
 
 .draw-actions button {
-  min-height: 42px;
-  border: 0;
-  border-radius: 8px;
   background: var(--red);
-  color: #fff;
-  cursor: pointer;
-  font-weight: 900;
+}
+
+.draw-actions button + button {
+  background: #1f2937;
+}
+
+.draw-history {
+  display: grid;
+  gap: 7px;
+  margin-top: 12px;
+  max-height: 360px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.draw-history-row {
+  display: grid;
+  grid-template-columns: minmax(82px, auto) 1fr;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #fff;
+}
+
+.draw-history-row span {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.draw-history-row strong {
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.draw-history p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
 }
 
 .latest-draw {
@@ -595,6 +634,15 @@ button {
   .settings .step-btn {
     width: 44px;
     height: 44px;
+  }
+
+  .draw-history-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .draw-history-row strong {
+    text-align: left;
   }
 }
 
