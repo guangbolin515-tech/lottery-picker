@@ -511,6 +511,8 @@ function formatResultHeader(result) {
 
 function formatDrawNumbers(draw) {
   if (!draw) return "暂无开奖数据";
+  const trimDigit = (value) => String(Number(value));
+  if (["sd", "p3", "p5"].includes(state.lottery)) return draw.front.map(trimDigit).join(",");
   if (draw.back?.length) return `${draw.front.join(" ")} - ${draw.back.join(" ")}`;
   return draw.front.join(",");
 }
