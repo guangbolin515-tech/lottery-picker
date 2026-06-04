@@ -43,6 +43,65 @@ const LOTTERIES = {
   }
 };
 
+const DRAW_INFO = {
+  ssq: {
+    provider: "中国福彩网",
+    schedule: "周二、周四、周日 21:15",
+    note: "开奖日优先以官方开奖公告为准。",
+    resultUrl: "https://www.cwl.gov.cn/",
+    apiUrls: [
+      "https://www.cwl.gov.cn/cwl_admin/front/cwlkj/search/kjxx/findDrawNotice?name=ssq&issueCount=30"
+    ]
+  },
+  dlt: {
+    provider: "中国体彩网",
+    schedule: "周一、周三、周六 21:25",
+    note: "开奖信息以中国体彩网发布为准。",
+    resultUrl: "https://m.lottery.gov.cn/",
+    apiUrls: [
+      "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=30&isVerify=1&pageNo=1"
+    ]
+  },
+  sd: {
+    provider: "中国福彩网",
+    schedule: "每天 21:15",
+    note: "开奖信息以中国福彩网发布为准。",
+    resultUrl: "https://www.cwl.gov.cn/",
+    apiUrls: [
+      "https://www.cwl.gov.cn/cwl_admin/front/cwlkj/search/kjxx/findDrawNotice?name=3d&issueCount=30"
+    ]
+  },
+  p3: {
+    provider: "中国体彩网",
+    schedule: "每天 21:25",
+    note: "开奖信息以中国体彩网发布为准。",
+    resultUrl: "https://m.lottery.gov.cn/",
+    apiUrls: [
+      "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=35&provinceId=0&pageSize=30&isVerify=1&pageNo=1",
+      "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=350133&provinceId=0&pageSize=30&isVerify=1&pageNo=1"
+    ]
+  },
+  p5: {
+    provider: "中国体彩网",
+    schedule: "每天 21:25",
+    note: "开奖信息以中国体彩网发布为准。",
+    resultUrl: "https://m.lottery.gov.cn/",
+    apiUrls: [
+      "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=350133&provinceId=0&pageSize=30&isVerify=1&pageNo=1",
+      "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=35&provinceId=0&pageSize=30&isVerify=1&pageNo=1"
+    ]
+  }
+};
+
+const DRAW_STORAGE_KEY = "lottery-draw-history-v1";
+const DRAW_DATA_FILES = {
+  ssq: "data/ssq.json",
+  dlt: "data/dlt.json",
+  sd: "data/sd.json",
+  p3: "data/p3.json",
+  p5: "data/p5.json"
+};
+
 const app = document.querySelector("#app");
 const state = {
   lottery: "ssq",
@@ -55,9 +114,31 @@ const state = {
   positionSelections: {},
   randomSizes: {},
   inputDrafts: {},
+  drawHistory: loadDrawHistory(),
+  drawLoading: false,
+  drawError: "",
   results: [],
   toast: ""
 };
+
+function loadDrawHistory() {
+  try {
+    return JSON.parse(localStorage.getItem(DRAW_STORAGE_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function saveDrawHistory() {
+  localStorage.setItem(DRAW_STORAGE_KEY, JSON.stringify(state.drawHistory));
+}
+
+function applyDrawHistory(lotteryKey, draws) {
+  if (!Array.isArray(draws) || !draws.length) return false;
+  state.drawHistory[lotteryKey] = draws.slice(0, 30);
+  saveDrawHistory();
+  return true;
+}
 
 function initSelections() {
   Object.values(LOTTERIES).forEach((lottery) => {
@@ -134,6 +215,7 @@ function setLottery(key) {
   state.play = plays.includes(state.play) ? state.play : "single";
   state.results = [];
   render();
+  loadDrawForLottery(key);
 }
 
 function setPlay(key) {
@@ -178,6 +260,30 @@ function setNumericState(action, value) {
     const digit = action.slice(10);
     state.randomSizes[`${lottery.short}-${digit}`] = value;
   }
+}
+
+function getNumericState(action) {
+  const lottery = currentLottery();
+  if (action === "count") return state.count;
+  if (action === "multiple") return state.multiple;
+  if (action.startsWith("size:")) {
+    const areaKey = action.slice(5);
+    return state.randomSizes[`${lottery.short}-${areaKey}`];
+  }
+  if (action.startsWith("digitSize:")) {
+    const digit = action.slice(10);
+    return state.randomSizes[`${lottery.short}-${digit}`];
+  }
+  return 1;
+}
+
+function stepNumberInput(action, delta) {
+  commitInput(action);
+  const current = getNumericState(action);
+  const next = normalizeNumberInput(action, current + delta);
+  setNumericState(action, next);
+  state.results = [];
+  render();
 }
 
 function commitInput(action) {
@@ -382,42 +488,139 @@ function showToast(message) {
 function formatTicket(ticket) {
   const lottery = currentLottery();
   if (ticket.kind === "areas") {
-    return lottery.areas
-      .map((area) => `${area.label} ${ticket.areas[area.key].map(pad).join(" ")}`)
-      .join(" + ");
+    return lottery.areas.map((area) => ticket.areas[area.key].map(pad).join(" ")).join(" - ");
   }
   return lottery.digits.map((digit) => ticket.digits[digit]).join(",");
+}
+
+function formatAreaGroup(group) {
+  return currentLottery().areas.map((area) => group[area.key].map(pad).join(" ")).join(" - ");
+}
+
+function formatResultHeader(result) {
+  const lottery = currentLottery();
+  const parts = [lottery.name];
+  if (result.type === "compound") {
+    const group = (result.groups || [result.areas])[0];
+    parts.push(lottery.areas.map((area) => group[area.key].length).join("+"));
+  }
+  if (lottery.supportsAddOn && state.addOn) parts.push("追加");
+  parts.push(`${state.multiple}倍`);
+  return parts.join(" ");
+}
+
+function formatDrawNumbers(draw) {
+  if (!draw) return "暂无开奖数据";
+  if (draw.back?.length) return `${draw.front.join(" ")} - ${draw.back.join(" ")}`;
+  return draw.front.join(",");
+}
+
+function normalizeNumberList(value) {
+  if (Array.isArray(value)) return value.map(String);
+  return String(value || "")
+    .replace(/[+,，|]/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function normalizeIssueDate(row) {
+  return row.lotteryDrawNum || row.issue || row.code || row.expect || "";
+}
+
+function normalizeDrawDate(row) {
+  return row.lotteryDrawTime || row.date || row.kjDate || row.time || "";
+}
+
+function normalizeCwlDraws(data, lotteryKey) {
+  const rows = data.result || data.data || [];
+  return rows
+    .slice(0, 30)
+    .map((row) => {
+      const red = normalizeNumberList(row.red || row.frontWinningNum || row.winNumber || row.number);
+      const blue = normalizeNumberList(row.blue || row.backWinningNum);
+      return {
+        issue: normalizeIssueDate(row),
+        date: normalizeDrawDate(row),
+        front: lotteryKey === "sd" ? red.slice(0, 3) : red,
+        back: blue
+      };
+    })
+    .filter((item) => item.issue && item.front.length);
+}
+
+function normalizeSportDraws(data, lotteryKey) {
+  const rows = data.value?.list || data.result || data.data || [];
+  return rows
+    .slice(0, 30)
+    .map((row) => {
+      const nums = normalizeNumberList(row.lotteryDrawResult || row.result || row.number);
+      let front = nums;
+      let back = [];
+      if (lotteryKey === "dlt") {
+        front = nums.slice(0, 5);
+        back = nums.slice(5, 7);
+      }
+      if (lotteryKey === "p3") front = nums.slice(0, 3);
+      if (lotteryKey === "p5") front = nums.slice(0, 5);
+      return {
+        issue: normalizeIssueDate(row),
+        date: normalizeDrawDate(row),
+        front,
+        back
+      };
+    })
+    .filter((item) => item.issue && item.front.length);
+}
+
+function normalizeDraws(data, lotteryKey) {
+  if (lotteryKey === "ssq" || lotteryKey === "sd") return normalizeCwlDraws(data, lotteryKey);
+  return normalizeSportDraws(data, lotteryKey);
+}
+
+async function refreshDrawResults() {
+  const lotteryKey = state.lottery;
+  state.drawLoading = true;
+  state.drawError = "";
+  render();
+  try {
+    const response = await fetch(`${DRAW_DATA_FILES[lotteryKey]}?t=${Date.now()}`, { cache: "no-store" });
+    if (!response.ok) throw new Error("not-found");
+    const data = await response.json();
+    if (!applyDrawHistory(lotteryKey, data.draws || data)) throw new Error("empty");
+    showToast("开奖数据已更新");
+  } catch {
+    state.drawError = "暂时没有可用开奖数据，请稍后重试或打开官方查询。";
+  } finally {
+    state.drawLoading = false;
+    render();
+  }
+}
+
+async function loadDrawForLottery(lotteryKey) {
+  if (state.drawHistory[lotteryKey]?.length) return;
+  try {
+    const response = await fetch(`${DRAW_DATA_FILES[lotteryKey]}?t=${Date.now()}`, { cache: "no-store" });
+    if (!response.ok) return;
+    const data = await response.json();
+    if (applyDrawHistory(lotteryKey, data.draws || data)) render();
+  } catch {
+    // Static draw data is optional; keep the picker usable when it is unavailable.
+  }
 }
 
 function formatResult(result) {
   const lottery = currentLottery();
   if (!result) return "";
-  const common = [
-    `彩种：${lottery.name}`,
-    lottery.supportsAddOn ? `追加：${state.addOn ? "是" : "否"}` : ""
-  ].filter(Boolean);
 
   if (result.type === "single") {
-    return [
-      ...common,
-      "",
-      ...result.tickets.map((ticket, index) => `第${index + 1}注：${formatTicket(ticket)}`)
-    ].join("\n");
+    return [formatResultHeader(result), ...result.tickets.map((ticket) => formatTicket(ticket))].join("\n");
   }
   if (result.type === "compound") {
     const groups = result.groups || [result.areas];
-    const lines = groups.flatMap((group, index) => [
-      groups.length > 1 ? `第${index + 1}注：` : "",
-      ...lottery.areas.map((area) => `${area.label}：${group[area.key].map(pad).join(" ")}`),
-      ""
-    ]);
-    return [...common, "", ...lines].join("\n").trimEnd();
+    return [formatResultHeader(result), ...groups.map((group) => formatAreaGroup(group))].join("\n");
   }
-  return [
-    ...common,
-    "",
-    ...lottery.digits.map((digit) => `${digit}：${result.positions[digit].join(" ")}`)
-  ].join("\n");
+  return [formatResultHeader(result), ...lottery.digits.map((digit) => `${digit}：${result.positions[digit].join(" ")}`)].join("\n");
 }
 
 async function copyResult() {
@@ -474,11 +677,44 @@ function renderSegment(name, items, selected) {
 function renderNumberInput(label, value, min, max, action, suffix = "") {
   const displayValue = action in state.inputDrafts ? state.inputDrafts[action] : value;
   return `
-    <label class="field">
-      <span>${label}</span>
-      <input data-action="${action}" min="${min}" max="${max}" inputmode="numeric" pattern="[0-9]*" type="text" value="${displayValue}" />
-      <em>${suffix}</em>
-    </label>
+    <div class="field step-field">
+      <button class="step-btn" data-action="stepInput" data-target="${action}" data-delta="-1" type="button" aria-label="${label}减少">-</button>
+      <label>
+        <span>${label}</span>
+        <input data-action="${action}" min="${min}" max="${max}" inputmode="numeric" pattern="[0-9]*" type="text" value="${displayValue}" />
+        <em>${suffix}</em>
+      </label>
+      <button class="step-btn" data-action="stepInput" data-target="${action}" data-delta="1" type="button" aria-label="${label}增加">+</button>
+    </div>
+  `;
+}
+
+function renderDrawPanel() {
+  const info = DRAW_INFO[state.lottery];
+  const lottery = currentLottery();
+  const history = state.drawHistory[state.lottery] || [];
+  const latest = history[0];
+  return `
+    <section class="panel draw-panel">
+      <div class="panel-title">开奖结果</div>
+      <div class="draw-card">
+        <div>
+          <strong>${lottery.name}</strong>
+          <span>${info.provider}</span>
+        </div>
+        <b>${info.schedule}</b>
+      </div>
+      <div class="latest-draw">
+        <span>${latest ? `第${latest.issue}期 ${latest.date || ""}` : "暂无当期开奖"}</span>
+        <strong>${formatDrawNumbers(latest)}</strong>
+      </div>
+      <p class="hint">${info.note} 本地最多保存近 30 期。</p>
+      ${state.drawError ? `<p class="draw-error">${state.drawError}</p>` : ""}
+      <div class="draw-actions">
+        <button data-action="refreshDraw" type="button">${state.drawLoading ? "更新中..." : "更新开奖"}</button>
+        <a href="${info.resultUrl}" target="_blank" rel="noopener">开奖查询</a>
+      </div>
+    </section>
   `;
 }
 
@@ -657,6 +893,7 @@ function render() {
         <span class="badge">PWA</span>
       </header>
       ${renderTabs()}
+      ${renderDrawPanel()}
       ${renderSettings()}
       ${state.mode === "random" ? renderRandomPanel() : renderManualPanel()}
       ${renderResult()}
@@ -682,6 +919,8 @@ app.addEventListener("click", (event) => {
   if (action === "copy") copyResult();
   if (action === "area") toggleArea(target.dataset.area, Number(target.dataset.number));
   if (action === "digit") toggleDigit(target.dataset.digit, Number(target.dataset.number));
+  if (action === "stepInput") stepNumberInput(target.dataset.target, Number(target.dataset.delta));
+  if (action === "refreshDraw") refreshDrawResults();
   if (action === "toggleAddon") {
     state.addOn = !state.addOn;
     render();
@@ -714,6 +953,7 @@ app.addEventListener("keydown", (event) => {
 
 initSelections();
 render();
+loadDrawForLottery(state.lottery);
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
