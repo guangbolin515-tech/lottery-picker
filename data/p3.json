@@ -1,6 +1,8 @@
 {
   "lottery": "p3",
-  "updatedAt": "2026-06-04T07:17:37.621Z",
+  "updatedAt": "2026-06-04T08:29:32.263Z",
+  "checkedAt": "2026-06-04T08:29:32.263Z",
+  "lastError": "",
   "draws": [
     {
       "issue": "26144",

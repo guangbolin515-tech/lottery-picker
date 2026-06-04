@@ -1,6 +1,8 @@
 {
   "lottery": "ssq",
-  "updatedAt": "2026-06-04T07:17:36.530Z",
+  "updatedAt": "2026-06-04T08:29:31.093Z",
+  "checkedAt": "2026-06-04T08:29:31.093Z",
+  "lastError": "",
   "draws": [
     {
       "issue": "2026062",

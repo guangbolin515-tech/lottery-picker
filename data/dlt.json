@@ -1,6 +1,8 @@
 {
   "lottery": "dlt",
-  "updatedAt": "2026-06-04T07:17:36.890Z",
+  "updatedAt": "2026-06-04T08:29:31.468Z",
+  "checkedAt": "2026-06-04T08:29:31.468Z",
+  "lastError": "",
   "draws": [
     {
       "issue": "26061",
