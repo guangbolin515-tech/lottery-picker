@@ -120,6 +120,7 @@ const state = {
   drawLoading: false,
   drawError: "",
   showDrawHistory: false,
+  showDisclaimer: false,
   results: [],
   toast: ""
 };
@@ -968,8 +969,23 @@ function render() {
       <footer class="site-footer">
         <strong>作者：林广波</strong>
         <span>彩票有风险，参与需理性，量力而行。</span>
+        <button data-action="openDisclaimer" type="button">免责声明</button>
       </footer>
     </main>
+    ${
+      state.showDisclaimer
+        ? `<div class="modal-backdrop" data-action="closeDisclaimer">
+            <section class="modal" role="dialog" aria-modal="true" aria-label="免责声明">
+              <div class="modal-head">
+                <strong>免责声明</strong>
+                <button data-action="closeDisclaimer" type="button" aria-label="关闭">×</button>
+              </div>
+              <p>本工具仅用于模拟选号与金额计算，不提供中奖预测，不涉及购彩交易，也不代表任何官方彩票网站或销售机构。</p>
+              <p>彩票有风险，参与需理性，请量力而行。</p>
+            </section>
+          </div>`
+        : ""
+    }
     ${state.toast ? `<div class="toast">${state.toast}</div>` : ""}
   `;
 }
@@ -991,6 +1007,14 @@ app.addEventListener("click", (event) => {
   if (action === "refreshDraw") refreshDrawResults();
   if (action === "toggleDrawHistory") {
     state.showDrawHistory = !state.showDrawHistory;
+    render();
+  }
+  if (action === "openDisclaimer") {
+    state.showDisclaimer = true;
+    render();
+  }
+  if (action === "closeDisclaimer") {
+    state.showDisclaimer = false;
     render();
   }
   if (action === "toggleAddon") {
