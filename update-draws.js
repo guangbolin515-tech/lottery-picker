@@ -6,30 +6,36 @@ const lotteries = {
   ssq: {
     source: "cwl",
     cwlName: "ssq",
-    aa1Name: "ssq"
+    aa1Name: "ssq",
+    huiniaoType: "ssq",
+    split: [6, 1]
   },
   dlt: {
     source: "sporttery",
     gameNo: "85",
     aa1Name: "dlt",
+    huiniaoType: "dlt",
     split: [5, 2]
   },
   sd: {
     source: "cwl",
     cwlName: "3d",
     aa1Name: "fcsd",
+    huiniaoType: "fcsd",
     split: [3, 0]
   },
   p3: {
     source: "sporttery",
     gameNo: "35",
     aa1Name: "pls",
+    huiniaoType: "pls",
     split: [3, 0]
   },
   p5: {
     source: "sporttery",
     gameNo: "350133",
     aa1Name: "plw",
+    huiniaoType: "plw",
     split: [5, 0]
   }
 };
@@ -66,6 +72,31 @@ async function getJson(url, options) {
   });
   if (!response.ok) throw new Error(`${response.status} ${url}`);
   return response.json();
+}
+
+function huiniaoNumbers(row) {
+  const named = ["one", "two", "three", "four", "five", "six", "seven", "eight"].map((key) => row[key]);
+  const nums = named.filter((value) => value !== undefined && value !== null && value !== "").map(String);
+  if (nums.length) return nums.map((value) => value.padStart(2, "0"));
+  return numberList(row.open_code || row.number || row.result || row.code_number);
+}
+
+async function fetchHuiniao(config) {
+  const url = `https://api.huiniao.top/interface/home/lotteryHistory?type=${config.huiniaoType}&page=1&limit=30`;
+  const data = await getJson(url);
+  const list = data.data?.data?.list || data.data?.list || [];
+  return cleanDraws(
+    list.map((row) => {
+      const nums = huiniaoNumbers(row);
+      const [frontSize, backSize] = config.split;
+      return {
+        issue: row.code || row.issue || "",
+        date: row.day || row.open_time || "",
+        front: nums.slice(0, frontSize),
+        back: backSize ? nums.slice(frontSize, frontSize + backSize) : []
+      };
+    })
+  );
 }
 
 async function fetchCwl(config, lotteryKey) {
@@ -125,6 +156,7 @@ async function fetchAa1(config, lotteryKey) {
 
 async function fetchDraws(lotteryKey, config) {
   const attempts = [
+    () => fetchHuiniao(config),
     config.source === "cwl" ? () => fetchCwl(config, lotteryKey) : () => fetchSporttery(config, lotteryKey),
     () => fetchAa1(config, lotteryKey)
   ];
