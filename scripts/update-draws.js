@@ -1,5 +1,5 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 const root = process.cwd();
 const lotteries = {
@@ -174,21 +174,51 @@ async function fetchDraws(lotteryKey, config) {
 
 await mkdir(join(root, "data"), { recursive: true });
 
-let failed = false;
+async function readExistingData(filePath, lotteryKey) {
+  try {
+    return JSON.parse(await readFile(filePath, "utf8"));
+  } catch {
+    return { lottery: lotteryKey, updatedAt: "", draws: [] };
+  }
+}
+
 for (const [lotteryKey, config] of Object.entries(lotteries)) {
+  const filePath = join(root, "data", `${lotteryKey}.json`);
   try {
     const draws = await fetchDraws(lotteryKey, config);
-    const filePath = join(root, "data", `${lotteryKey}.json`);
     await writeFile(
       filePath,
-      `${JSON.stringify({ lottery: lotteryKey, updatedAt: new Date().toISOString(), draws }, null, 2)}\n`,
+      `${JSON.stringify(
+        {
+          lottery: lotteryKey,
+          updatedAt: new Date().toISOString(),
+          checkedAt: new Date().toISOString(),
+          lastError: "",
+          draws
+        },
+        null,
+        2
+      )}\n`,
       "utf8"
     );
     console.log(`${lotteryKey}: ${draws.length} draws`);
   } catch (error) {
-    failed = true;
-    console.error(`${lotteryKey}: ${error.message}`);
+    const existing = await readExistingData(filePath, lotteryKey);
+    await writeFile(
+      filePath,
+      `${JSON.stringify(
+        {
+          ...existing,
+          lottery: lotteryKey,
+          checkedAt: new Date().toISOString(),
+          lastError: error.message,
+          draws: Array.isArray(existing.draws) ? existing.draws.slice(0, 30) : []
+        },
+        null,
+        2
+      )}\n`,
+      "utf8"
+    );
+    console.warn(`${lotteryKey}: kept existing data after error: ${error.message}`);
   }
 }
-
-if (failed) process.exitCode = 1;
