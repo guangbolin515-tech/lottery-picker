@@ -272,6 +272,10 @@ button {
   line-height: 1.5;
 }
 
+.panel .fields + .primary {
+  margin-top: 16px;
+}
+
 .draw-card {
   display: flex;
   align-items: center;
@@ -619,19 +623,19 @@ button {
 }
 
 @media (max-width: 520px) {
-  .settings .fields {
+  .fields {
     grid-template-columns: 1fr;
   }
 
-  .settings .step-field {
+  .step-field {
     grid-template-columns: 44px minmax(0, 1fr) 44px;
   }
 
-  .settings .field input {
+  .field input {
     width: 48px;
   }
 
-  .settings .step-btn {
+  .step-btn {
     width: 44px;
     height: 44px;
   }

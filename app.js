@@ -913,7 +913,6 @@ function render() {
           <h1>彩票模拟选号器</h1>
           <p>仅作模拟选号与金额计算</p>
         </div>
-        <span class="badge">PWA</span>
       </header>
       ${renderTabs()}
       ${renderDrawPanel()}
