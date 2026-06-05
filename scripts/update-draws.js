@@ -1,9 +1,11 @@
+import crypto from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const root = process.cwd();
 const lotteries = {
   ssq: {
+    sinaType: "101",
     source: "cwl",
     cwlName: "ssq",
     aa1Name: "ssq",
@@ -11,6 +13,7 @@ const lotteries = {
     split: [6, 1]
   },
   dlt: {
+    sinaType: "201",
     source: "sporttery",
     gameNo: "85",
     aa1Name: "dlt",
@@ -18,6 +21,7 @@ const lotteries = {
     split: [5, 2]
   },
   sd: {
+    sinaType: "102",
     source: "cwl",
     cwlName: "3d",
     aa1Name: "fcsd",
@@ -25,6 +29,7 @@ const lotteries = {
     split: [3, 0]
   },
   p3: {
+    sinaType: "202",
     source: "sporttery",
     gameNo: "35",
     aa1Name: "pls",
@@ -32,6 +37,7 @@ const lotteries = {
     split: [3, 0]
   },
   p5: {
+    sinaType: "203",
     source: "sporttery",
     gameNo: "350133",
     aa1Name: "plw",
@@ -72,6 +78,75 @@ async function getJson(url, options) {
   });
   if (!response.ok) throw new Error(`${response.status} ${url}`);
   return response.json();
+}
+
+function sinaSign(params) {
+  const raw = Object.keys(params)
+    .filter((key) => key !== "sign")
+    .sort()
+    .map((key) => params[key])
+    .join("|");
+  return crypto.createHash("md5").update(raw).digest("hex");
+}
+
+async function getSinaJson(params) {
+  const query = {
+    format: "json",
+    __caller__: "web",
+    __version__: "1.0.0",
+    __verno__: 1,
+    ...params
+  };
+  query.sign = sinaSign(query);
+  const search = new URLSearchParams(query);
+  const urls = [
+    `https://alpha.lottery.sina.com.cn/gateway/index/entry?${search}`,
+    `https://mix.lottery.sina.com.cn/gateway/index/entry?${search}`
+  ];
+  const errors = [];
+  for (const url of urls) {
+    try {
+      const data = await getJson(url, { headers: { "x-requested-with": "XMLHttpRequest" } });
+      const result = data.result || data;
+      if (result.status?.code === 0) return result;
+      errors.push(`${result.status?.code || "bad-status"} ${result.status?.msg || url}`);
+    } catch (error) {
+      errors.push(error.message);
+    }
+  }
+  throw new Error(errors.join("; "));
+}
+
+function sinaDrawFromRow(row, config) {
+  const nums = numberList(row.redResults || row.openResults || row.openResult || row.number);
+  const back = numberList(row.blueResults || row.blueResult);
+  const [frontSize, backSize] = config.split;
+  return {
+    issue: row.issueNo || row.issue || "",
+    date: String(row.openTime || row.openDate || "").slice(0, 10),
+    front: nums.slice(0, frontSize),
+    back: backSize ? (back.length ? back : nums.slice(frontSize, frontSize + backSize)) : []
+  };
+}
+
+async function fetchSina(config) {
+  const listResult = await getSinaJson({
+    cat1: "gameOpenList",
+    lottoType: config.sinaType,
+    page: 1,
+    pageSize: 30,
+    paginationType: 1
+  });
+  const list = cleanDraws((listResult.data || []).map((row) => sinaDrawFromRow(row, config)));
+  if (list.length >= 30) return list;
+
+  const latestResult = await getSinaJson({
+    cat1: "gameOpenInfo",
+    lottoType: config.sinaType,
+    issueNo: ""
+  });
+  const latest = sinaDrawFromRow(latestResult.data || {}, config);
+  return cleanDraws([latest, ...list]);
 }
 
 function huiniaoNumbers(row) {
@@ -117,7 +192,7 @@ async function fetchCwl(config, lotteryKey) {
   );
 }
 
-async function fetchSporttery(config, lotteryKey) {
+async function fetchSporttery(config) {
   const url = `https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=${config.gameNo}&provinceId=0&pageSize=30&isVerify=1&pageNo=1`;
   const data = await getJson(url);
   const rows = data.value?.list || data.result || data.data || [];
@@ -156,17 +231,21 @@ async function fetchAa1(config, lotteryKey) {
 
 async function fetchDraws(lotteryKey, config) {
   const attempts = [
-    () => fetchHuiniao(config),
-    config.source === "cwl" ? () => fetchCwl(config, lotteryKey) : () => fetchSporttery(config, lotteryKey),
-    () => fetchAa1(config, lotteryKey)
+    ["sina", () => fetchSina(config)],
+    ["huiniao", () => fetchHuiniao(config)],
+    [
+      config.source === "cwl" ? "official-cwl" : "official-sporttery",
+      config.source === "cwl" ? () => fetchCwl(config, lotteryKey) : () => fetchSporttery(config)
+    ],
+    ["aa1", () => fetchAa1(config, lotteryKey)]
   ];
   const errors = [];
-  for (const attempt of attempts) {
+  for (const [source, attempt] of attempts) {
     try {
       const draws = await attempt();
-      if (draws.length) return draws;
+      if (draws.length) return { draws, source };
     } catch (error) {
-      errors.push(error.message);
+      errors.push(`${source}: ${error.message}`);
     }
   }
   throw new Error(errors.join("; ") || "no draw data");
@@ -185,12 +264,13 @@ async function readExistingData(filePath, lotteryKey) {
 for (const [lotteryKey, config] of Object.entries(lotteries)) {
   const filePath = join(root, "data", `${lotteryKey}.json`);
   try {
-    const draws = await fetchDraws(lotteryKey, config);
+    const { draws, source } = await fetchDraws(lotteryKey, config);
     await writeFile(
       filePath,
       `${JSON.stringify(
         {
           lottery: lotteryKey,
+          source,
           updatedAt: new Date().toISOString(),
           checkedAt: new Date().toISOString(),
           lastError: "",
@@ -201,7 +281,7 @@ for (const [lotteryKey, config] of Object.entries(lotteries)) {
       )}\n`,
       "utf8"
     );
-    console.log(`${lotteryKey}: ${draws.length} draws`);
+    console.log(`${lotteryKey}: ${draws.length} draws from ${source}`);
   } catch (error) {
     const existing = await readExistingData(filePath, lotteryKey);
     await writeFile(
